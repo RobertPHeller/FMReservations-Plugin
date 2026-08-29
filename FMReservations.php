@@ -15,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <260829.1635>
+ *  Last Modified : <260829.1931>
  *
  *  Description	
  *
@@ -289,7 +289,7 @@ class FMRESERVATIONS_Plugin {
     //$test = do_action('register_reservation_form');
     //$temp = ob_get_clean();
     //$result .= $temp;
-    $result .= '<p><input type="submit" name="addres" value="Make Reservation" /></tp></form>';
+    $result .= '<p><input type="submit" name="EnterReservation" value="Make Reservation" /></tp></form>';
     return $result;
   }
   function wp_head() {
