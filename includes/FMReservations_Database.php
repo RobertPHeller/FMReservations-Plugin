@@ -9,7 +9,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 16:01:04
- *  Last Modified : <260828.1649>
+ *  Last Modified : <260829.0340>
  *
  *  Description	
  *
@@ -64,8 +64,25 @@ class FMReservations_Database {
   }
   public static function Get_OneShow($thedate,$format='OBJECT') {
     global $wpdb;
-    $sql = $wpdb->prepare('SELECT * FROM '.FMRESERVATIONS_TABLE.' WHERE thedate = %s',$thedate);
-    return $wpdb->get_results($sql,$format)
+    $sql = $wpdb->prepare('SELECT * FROM '.
+                          FMRESERVATIONS_TABLE.
+                          ' WHERE thedate = %s',$thedate);
+    return $wpdb->get_results($sql,$format);
+  }
+  public static function Get_Future_Reservations($format='OBJECT') {
+    global $wpdb;
+    return $wpdb->get_results("SELECT * FROM " .
+                              FMRESERVATIONS_TABLE.
+                              " where thedate >= CURDATE() order by thedate, name",
+                              $format);
+  }
+  public static function Get_ReservationsForDate($thedate,$format='OBJECT') {
+    global $wpdb;
+    $sql = $wpdb->prepare('SELECT * FROM '.
+                          FMRESERVATIONS_TABLE.
+                          " where thedate = %s order by name",
+                          $thedate
+    return $wpdb->get_results($sql,$format);
   }
   public static function TotalReservedSeatsForDate($thedate) {
     global $wpdb;
@@ -85,6 +102,11 @@ class FMReservations_Database {
                                              "name" => $name),
                                              array("%s","%d","%d","%s"));
     return $wpdb->insert_id;
+  }
+  public static function DeleteReservation($id) {
+    global $wpdb;
+    $sql = $wpdb->prepare('DELETE FROM '.FMRESERVATIONS_TABLE.' WHERE id = %d',$id);
+    $wpdb->query($sql);
   }
 }  
 

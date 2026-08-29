@@ -9,7 +9,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:57:39
- *  Last Modified : <260828.1600>
+ *  Last Modified : <260829.0054>
  *
  *  Description	
  *
@@ -43,10 +43,26 @@
 
 define('FMRESERVATIONS_INCLUDES_DIR', plugin_dir_path(__FILE__));      /* The Plugin includes directory */
 define('FMRESERVATIONS_DIR', dirname(FMRESERVATIONS_INCLUDES_DIR));       /* The Plugin directory */
-define('FMRESERVATIONS_MAINFILE', FMRESERVATIONS_DIR . '/FMReservations-Plugin.php');       /* Root file of the plugin */
+define('FMRESERVATIONS_MAINFILE', FMRESERVATIONS_DIR . '/FMReservations.php');       /* Root file of the plugin */
+function _fmr_get_header_value($file,$headerkey) {
+  $fp = fopen($file,'r');
+  if (!$fp) return '';
+   while ($line = fgets($fp)) {
+    if (preg_match("/^\s*\*\s*$/",$line) > 0) {
+      $result = '';
+      break;
+    }
+    if (preg_match('/^\s*\*\s*'.$headerkey.':\s*(.*)$/',$line,$matches) > 0) {
+      $result = $matches[1];
+      break;
+    }
+  }
+  fclose($fp);
+  return $result;
+}
 define('FMRESERVATIONS_PLUGIN_NAME', 'FMReservations'); /* Name of the plugin */
-define('FMRESERVATIONS_DISPLAY_NAME', _fms_get_header_value(FMRESERVATIONS_MAINFILE,'Plugin Name'));
-define('FMRESERVATIONS_VERSION', _fms_get_header_value(FMRESERVATIONS_MAINFILE,'Version'));
+define('FMRESERVATIONS_DISPLAY_NAME', _fmr_get_header_value(FMRESERVATIONS_MAINFILE,'Plugin Name'));
+define('FMRESERVATIONS_VERSION', _fmr_get_header_value(FMRESERVATIONS_MAINFILE,'Version'));
 define('FMRESERVATIONS_PLUGIN_URL',plugin_dir_url(FMRESERVATIONS_MAINFILE));
 define('FMRESERVATIONS_PLUGIN_CSS_URL', FMRESERVATIONS_PLUGIN_URL . '/css');
 define('FMRESERVATIONS_PLUGIN_IMAGE_URL', FMRESERVATIONS_PLUGIN_URL . '/images');

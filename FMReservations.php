@@ -5,6 +5,7 @@
   * Version 0.0.1
   * Author: Robert Heller
   * Author URI: http://www.deepsoft.com/
+  * Requires Plugins: FMSchedule
  *
  *  System        : 
  *  Module        : 
@@ -14,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <260828.1934>
+ *  Last Modified : <260829.0316>
  *
  *  Description	
  *
@@ -46,7 +47,7 @@
  *
  ****************************************************************************/
 
-/* Load constants */889
+/* Load constants */
 require_once(dirname(__FILE__) . "/includes/FMReservations_Constants.php");
 
 /* Additional file-specific constants */
@@ -61,7 +62,7 @@ require_once(FMRESERVATIONS_INCLUDES_DIR. "/FMReservations_Database.php");
 class FMRESERVATIONS_Plugin {
   public $version = FMRESERVATIONS_VERSION;
   
-  var reservations_list_table = '';
+  var $reservations_list_table = '';
   /* Constructor: register our activation and deactivation hooks and then
     * add in our actions.
     */
@@ -69,6 +70,20 @@ class FMRESERVATIONS_Plugin {
     // Add the installation and uninstallation hooks
     register_activation_hook(FMRESERVATIONS_PATH, array($this,'install'));
     register_deactivation_hook(FMRESERVATIONS_PATH, array($this,'deinstall'));
+  }
+  function customSgrRenderList(array $list): array //Where reCAPTCHA is rendered
+  {
+    $list[] = 'register_reservation_form';
+    return $list;
+  }
+  function customSgrVerifyList(array $list): array //Where reCAPTCHA is verified
+  {
+    $list[] = 'register_reservation_verify';
+  }
+  /* Activation hook: create database tables, add in privs., */
+  function install() {
+    //file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::install()\n");
+    //file_put_contents("php://stderr","*** -: about to check for FMSchedule_Database::Get_UpcomingShows\n");
     // Actions: widgets, admin menu, headings (CSS), and dashboard.
     add_action('widgets_init', array($this,'widgets_init'));
     add_action('admin_menu', array($this,'admin_menu'));
@@ -86,18 +101,6 @@ class FMRESERVATIONS_Plugin {
       add_action( 'admin_post_print_reservations', 
                  array($this,'print_reservations') );
     }
-  }
-  function customSgrRenderList(array $list): array //Where reCAPTCHA is rendered
-  {
-    $list[] = 'register_reservation_form';
-    return $list;
-  }
-  function customSgrVerifyList(array $list): array //Where reCAPTCHA is verified
-  {
-    $list[] = 'register_reservation_verify';
-  }
-  /* Activation hook: create database tables, add in privs., */
-  function install() {
     FMReservations_Database::make_reservations_table();
     global $wp_roles;
     $wp_roles->add_cap ('administrator', 'manage_reservations');
@@ -158,19 +161,22 @@ class FMRESERVATIONS_Plugin {
   ?><div class="wrap"><div id="icon-fmr-db" class="icon32"><br />
     </div><h2>FM Reservations List <a href="<?php 
        echo add_query_arg(array('page' => 'fm-add-reservation',
-                                'mode' => 'add',
-                                'season' => $this->reservations_list_table->season),
+                                'mode' => 'add'),
                              admin_url('admin.php') ); 
        ?>" class="button add-new-h2">Add New</a> </h2>
     <form action="" method="get">
     <input type="hidden" name="page" value="fm-reservations-list" />
     <?php $this->reservations_list_table->display(); ?></form><br class="clear" /></div><div class="clear"></div><?php
-  }
-  function Add_FM_Reservation() {
-  }
-                                    
-    
+ }
+ function wp_head() {
+ }
+ function admin_head() {
+ }
+ function wp_dashboard_setup() {
+ }
+ 
+}      
       
-  
+new FMRESERVATIONS_Plugin();  
 
 ?>
