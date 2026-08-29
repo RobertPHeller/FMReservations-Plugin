@@ -15,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <260829.0316>
+ *  Last Modified : <260829.1635>
  *
  *  Description	
  *
@@ -70,20 +70,6 @@ class FMRESERVATIONS_Plugin {
     // Add the installation and uninstallation hooks
     register_activation_hook(FMRESERVATIONS_PATH, array($this,'install'));
     register_deactivation_hook(FMRESERVATIONS_PATH, array($this,'deinstall'));
-  }
-  function customSgrRenderList(array $list): array //Where reCAPTCHA is rendered
-  {
-    $list[] = 'register_reservation_form';
-    return $list;
-  }
-  function customSgrVerifyList(array $list): array //Where reCAPTCHA is verified
-  {
-    $list[] = 'register_reservation_verify';
-  }
-  /* Activation hook: create database tables, add in privs., */
-  function install() {
-    //file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::install()\n");
-    //file_put_contents("php://stderr","*** -: about to check for FMSchedule_Database::Get_UpcomingShows\n");
     // Actions: widgets, admin menu, headings (CSS), and dashboard.
     add_action('widgets_init', array($this,'widgets_init'));
     add_action('admin_menu', array($this,'admin_menu'));
@@ -101,7 +87,20 @@ class FMRESERVATIONS_Plugin {
       add_action( 'admin_post_print_reservations', 
                  array($this,'print_reservations') );
     }
-    FMReservations_Database::make_reservations_table();
+  }
+  function customSgrRenderList(array $list): array //Where reCAPTCHA is rendered
+  {
+    $list[] = 'register_reservation_form';
+    return $list;
+  }
+  function customSgrVerifyList(array $list): array //Where reCAPTCHA is verified
+  {
+    $list[] = 'register_reservation_verify';
+  }
+  /* Activation hook: create database tables, add in privs., */
+  function install() {
+    //file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::install()\n");
+    //file_put_contents("php://stderr","*** -: about to check for FMSchedule_Database::Get_UpcomingShows\n");
     global $wp_roles;
     $wp_roles->add_cap ('administrator', 'manage_reservations');
     $wp_roles->add_cap ('editor', 'manage_reservations');
@@ -123,6 +122,7 @@ class FMRESERVATIONS_Plugin {
     }
     add_action('sgr_render_list', array($this,'customSgrRenderList'));
     add_action('sgr_verify_list', array($this,'customSgrVerifyList'));
+    FMReservations_Database::make_reservations_table();
   }
   /* Deactivation hook: remove privs and cron job */
   function deinstall() {
@@ -148,11 +148,11 @@ class FMRESERVATIONS_Plugin {
                                 array( $this, 'Show_Reservations_Page' ),
                                 FMRESERVATIONS_PLUGIN_IMAGE_URL .
                                 '/FMReservations_menu.png' );
-    //file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::admin_menu: screen_id1 = $screen_id1\n");
+    file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::admin_menu: screen_id1 = $screen_id1\n");
     require_once (FMRESERVATIONS_INCLUDES_DIR . '/FMReservations_List_Table.php');
-    $this->reservations_list_table = new FMReservations_List_Table();
-    $screen_id2 = add_submenu_page ('fm-reservations-list', 
-                                    'Add New Reservation',
+    $this->reservations_list_table = new FMReservations_List_Table($screen_id1);
+    $screen_id2 = add_submenu_page ('fm-reservations-list', 'Add New Reservation',
+                                    'Add New', 'manage_reservations', 
                                     'fm-add-reservation',
                                     array( $this, 'Add_FM_Reservation' ));
   }
@@ -161,20 +161,144 @@ class FMRESERVATIONS_Plugin {
   ?><div class="wrap"><div id="icon-fmr-db" class="icon32"><br />
     </div><h2>FM Reservations List <a href="<?php 
        echo add_query_arg(array('page' => 'fm-add-reservation',
+                                'current_date' => $this->reservations_list_table->currentDate,
                                 'mode' => 'add'),
                              admin_url('admin.php') ); 
-       ?>" class="button add-new-h2">Add New</a> </h2>
+       ?>" class="button add-new-h2">Add New</a> <a href="<?php
+        echo add_query_arg(array('current_date' => $this->reservations_list_table->currentDate,
+                                 'action' => 'print_reservations'),
+			   admin_url('admin-post.php')); 
+	?>" class="button add-new-h2" title="Print" target="_blank"
+	    onclick="window.open(this.href,'win2','status=no,toolbar=no,scrollbars=yes,titlebar=no,menubar=no,resizable=yes,width=640,height=480,directories=no,location=no'); return false;" 
+	    rel="nofollow">Print Reservations</a></h2>
+           
     <form action="" method="get">
     <input type="hidden" name="page" value="fm-reservations-list" />
     <?php $this->reservations_list_table->display(); ?></form><br class="clear" /></div><div class="clear"></div><?php
  }
- function wp_head() {
+ function print_reservations() {
+   if (isset($_REQUEST['current_date'])) {
+     $thedate = sanitize_text_field($_REQUEST['current_date']);
+   } else {
+     $thedate = FMReservations_Database::NextDate();
+   }
+   $data = FMReservations_Database::Get_ReservationsForDate($thedate);
+   $print_html = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'."\n";
+   $print_html .= '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en-gb" lang="en-gb" dir="ltr">'."\n";
+   $print_html .= '<head><title>Wendell Full Moon Coffeehouse Reservation List '.$thedate.'.';
+   $print_html .= '</title>';
+   $print_html .= '<style type="text/css" media="print">'."\n";
+   $print_html .= 'a.navigate {display: none;}</style></head>';
+   $print_html .= '<body><h1>Wendell Full Moon Coffeehouse Reservation List ';
+   $print_html .=  mysql2date('F j, Y',$thedate).'.</h1>';
+   $print_html .= '<div style="float: right;"><a class="navigate" href="#" onclick="window.print();return false;">Print</a>&nbsp;<a class="navigate" href="#" onclick="window.close();return false;">Close</a></div>'."\n";
+   $print_html .= '<br clear="all" />'."\n";
+
+
+   $print_html .= "<ol>\n";
+
+   foreach ((array)$data as $item) {
+     $print_html .= '<li> Reservation ID: '.$item->id;
+     $print_html .= '&nbsp;<b>'.esc_html($item->name).'</b>';
+     $print_html .= '&nbsp;'.esc_html($item->seatcount).' seat';
+     if ($item->seatcount > 1) { $print_html .= 's'; }
+     $print_html .= "</li>\n";
+   }
+   
+   $print_html .= "</ol>\n</body></html>\n";
+   
+   header("Content-type: text/html");
+   header("Cache-Control: must-revalidate, post-check=0, pre-check=0");
+   header("Content-Length: " . strlen($print_html));
+   
+   echo $print_html;
+   wp_die();
  }
- function admin_head() {
- }
- function wp_dashboard_setup() {
- }
- 
+ function Add_FM_Reservation() {
+   $message = $this->reservations_list_table->prepare_one_item();
+   ?><div class="wrap"><div id="<?php echo $this->reservations_list_table->add_item_icon(); ?>" class="icon32"><br />
+     </div><h2><?php echo $this->reservations_list_table->add_item_h2(); ?></h2>
+   <?php if ($message != '') {
+       ?><div id="message"class="updated fade"><p><?php echo $message; ?></div><?php
+	  } ?>
+    <form action="" method="get">
+    <input type="hidden" name="page" value="fm-add-reservation" />
+    <?php $this->reservations_list_table->display_one_item_form(add_query_arg(array('page' => 'fm-reservations-list'),
+								 admin_url('admin.php')) ); ?></form><br class="clear" /></div><div class="clear"></div><?php
+  }
+  function reservation_shortcode($atts, $content=null, $code="") {
+    extract( shortcode_atts ( array(), $atts ) );
+    $messages = array();
+    if ( isset($_REQUEST['EnterReservation']) ) {
+      //do_action('register_reservation_verify', true);
+      $dataok = true;
+      //if (class_exists('WPPlugin') && class_exists('ReCAPTCHAPlugin') &&
+      //    class_exists('ReCaptcha') ) {
+      //  $this->recaptcha_options = WPPlugin::retrieve_options('recaptcha_options');
+      //  if ($this->recaptchalib == null) {
+      //    $this->recaptchalib = new ReCaptcha($this->recaptcha_options['secret']);
+      //  }
+      //  $response = $this->recaptchalib->verifyResponse(
+      //                                                  $_SERVER['REMOTE_ADDR'],
+      //                                                  $_POST['g-recaptcha-response']);
+      //  if (!$response->success) {
+      //    $messages[] = '<span id="error"><strong>ReCAPTCHA error:</strong> your captcha response was incorrect -- please try again</span>';
+      //    $dataok = false;
+      //    file_put_contents("php://stderr","*** reservation_shortcode: ReCAPTCHA failed\n");
+      //  }
+      //}
+      if ( empty($_REQUEST['name']) ) {
+        $messages[] = '<div id="error"><p>Name missing.</p></div>';
+        $dataok = false; 
+      }
+      $name =  sanitize_text_field($_REQUEST['name']);
+      $seatcount =  sanitize_text_field($_REQUEST['seatcount']);
+      if ($seatcount < 1 || $seatcount > 6) {
+        $messages[] = '<div id="error"><p>Number of seats is too small or too large: the number of seats must be from 1 to 6.</p></div>';
+        $dataok = false; 
+      }
+      $thedate = sanitize_text_field($_REQUEST['thedate']);
+      if ($dataok) { 
+        $item = (object)
+        array('thedate' => FMReservations_Database::NormalizeDate($thedate),
+              'name' => $name,
+              'seatcount' => $seatcount,
+              'id' => 0);
+        $reservationID = FMReservations_Database::InsertNewReservation($item);
+        $print_url = wp_nonce_url( 
+                  add_query_arg(array('id' => $reservationID,
+                                      'action' => 'print_reservation_page'),
+                                      admin_url('admin.php') )); 
+        ?><script>
+        var url = '<?php echo $print_url; ?>';
+        var name = 'win2';
+        var opts = 'status=no,toolbar=no,scrollbars=yes,titlebar=no,menubar=no,resizable=yes,width=640,height=480,directories=no,location=no';
+        </script)<?php
+      }
+    }
+    $result = '';
+    foreach ($messages as $m) {
+      $result .= $m;
+    }
+    $result .= '<form name="reservation" method="POST" action="">';
+    $dates = FMReservations_Database::make_dates_dropdown_r();
+    $result .= '<table class="form-table">'.$dates;
+    $result .= '<tr valign="top"><th  scope="row"><label for="name">Name: </label></th><td><input id="name", name="name" /><td></tr>';
+    $result .= '<tr valign="top"><th scope="row"><label for="seats">Seats: </label></th><td><input id="seats" name="seatcount" type="number" value="1" min="1" max="6" /><td></tr></table>';
+    //ob_start();
+    //$test = do_action('register_reservation_form');
+    //$temp = ob_get_clean();
+    //$result .= $temp;
+    $result .= '<p><input type="submit" name="addres" value="Make Reservation" /></tp></form>';
+    return $result;
+  }
+  function wp_head() {
+  }
+  function admin_head() {
+  }
+  function wp_dashboard_setup() {
+  }
+  
 }      
       
 new FMRESERVATIONS_Plugin();  

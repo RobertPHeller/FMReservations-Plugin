@@ -9,7 +9,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-29 03:10:02
- *  Last Modified : <260829.0350>
+ *  Last Modified : <260829.1736>
  *
  *  Description	
  *
@@ -47,6 +47,9 @@ require_once(dirname(__FILE__) . "/FMReservations_Constants.php");
 /* Load Database code */
 require_once(FMRESERVATIONS_INCLUDES_DIR. "/FMReservations_Database.php");
 
+/* Load Per_Page_Screen_Opt class */
+require_once(FMRESERVATIONS_INCLUDES_DIR . "/Per_Page_Screen_Opt.php");
+
 /*************************** LOAD THE BASE CLASS *******************************
   *******************************************************************************
   * The WP_List_Table class isn't automatically available to plugins, so we need
@@ -61,11 +64,18 @@ if(!class_exists('WP_List_Table')){
   */
 
 class FMReservations_List_Table extends WP_List_Table {
+  public $currentDate;
   var $viewmode = 'add';
   var $viewid   = 0;
   var $viewitem;
+  protected $per_page_screen_option;
   
-  function __construct() {
+  function __construct($screen_id) {
+    /* Add screen option: <mumble>s per page. */
+    $this->per_page_screen_option =
+    new FMReservations_Per_Page_Screen_Option($screen_id,
+                                              'fmr_reservatons-per-page',
+                                              'Reservations',20);
     //Set parent defaults
     parent::__construct( array ('singular' => 'Reservation',   // One thing
                                 'plural'   => 'Reservations',  // Multiple things
@@ -85,41 +95,40 @@ class FMReservations_List_Table extends WP_List_Table {
   function column_thedate ($item) {
     return mysql2date('F j, Y',$item->thedate);
   }
-  unction column_name ($item) {
+  function column_name ($item) {
     // Build row actions 
         $actions = array(
       'edit' => '<a href="'.add_query_arg(array('page' => 'fm-add-reservation',
 						'mode' => 'edit',
-						'id' => $item->id),
+                                                'current_date' => $this->currentDate,
+						'id' => $item->id,),
 					  admin_url('admin.php') ).'">'.
 			'Edit'."</a>",
       'view' => '<a href="'.add_query_arg(array('page' => 'fm-add-reservation',
 						'mode' => 'view',
+                                                'current_date' => $this->currentDate,
 						'id' => $item->id),
 					  admin_url('admin.php') ).'">'.
 			'View'."</a>",
       'delete' => '<a href="'.add_query_arg(array('page' => $_REQUEST['page'],
 						  'action' => 'delete',
+                                                  'current_date' => $this->currentDate,
 						  'id' => $item->id),
 					    admin_url('admin.php') ).'">'.
 			'Delete'."</a>"
         );
     return stripslashes($item->name).$this->row_actions($actions);
   }
-  function column_seatid ($item) {
-    return $item->seatid;
-  }
   function column_seatcount ($item) {
     return $item->seatcount;
   }
   function get_columns() { 
     return array ('cb' => '<input type="checkbox" />',
-                  'thedate' => 'Date',
-                  'seatid' => 'Reservation ID',
+                  'name' => 'Name',
                   'seatcount' => 'Seats'
                   );
   }
-  function get_sortable_columns() {return array();} 
+  function get_sortable_columns() {return array('name');} 
   function get_bulk_actions() {
     return array('delete' => 'Delete');
   }
@@ -134,26 +143,39 @@ class FMReservations_List_Table extends WP_List_Table {
     $action = $this->current_action();
     switch ($action) {
       case 'delete':
-	if ( isset($_REQUEST['checked']) && !empty($_REQUEST['checked'])) {
+	if ( isset($_REQUEST['checked_item']) && !empty($_REQUEST['checked_item'])) {
 	  foreach ($_REQUEST['checked_item'] as $theitem) {
+            file_put_contents("php://stderr","*** FMReservations_List_Table::process_bulk_action() theitem is $theitem\n");
 	    FMReservations_Database::DeleteReservation($theitem);
 	  }
 	} else if ( isset($_REQUEST['id']) ) {
+          file_put_contents("php://stderr","*** FMReservations_List_Table::process_bulk_action() _REQUEST['id'] is ".$_REQUEST['id']."\n");
 	  FMReservations_Database::DeleteReservation($_REQUEST['id']);
 	}
 	break;
     }
   }
   function get_column_info() {
-    if ( isset($this->_column_headers) ) {return $this->_column_headers;}
+    file_put_contents("php://stderr","*** FMReservations_List_Table::get_column_info() isset(\$this->_column_headers) returns ".isset($this->_column_headers)."\n");
+    if ( isset($this->_column_headers) ) {
+      return $this->_column_headers;
+    }
     $columns = $this->get_columns( );
     $hidden = array();
     $sortable = $this->get_sortable_columns();
 
-    $this->_column_headers = array( $columns, $hidden, $sortable );
+    $this->_column_headers = array( $columns, $hidden, $sortable, 'name');
+    file_put_contents("php://stderr","*** FMReservations_List_Table::get_column_info() returns: ".print_r($this->_column_headers,true)."\n");
     return $this->_column_headers;
   }
   function process_filters_and_bulk_action() {
+    if ( isset ($_REQUEST['filter_top'] ) && isset( $_REQUEST['current_date_top'] ) ) {
+      $this->currentDate = $_REQUEST['current_date_top'];
+    } else if ( isset ($_REQUEST['filter_bottom'] ) && isset( $_REQUEST['current_date_bottom'] ) ) {
+      $this->currentDate = $_REQUEST['current_date_bottom'];
+    } else {
+      $this->currentDate = isset( $_REQUEST['current_date'] ) ? $_REQUEST['current_date'] : FMReservations_Database::NextDate();
+    }
     $this->process_bulk_action();
   }
   function prepare_items() {
@@ -165,15 +187,25 @@ class FMReservations_List_Table extends WP_List_Table {
     $columns = $this->get_columns();    // All of our columns
     $hidden  = array();         // Hidden columns [none]
     $sortable = $this->get_sortable_columns(); // Sortable columns
-    $this->_column_headers = array($columns,$hidden,$sortable); // Set up columns
+    $this->_column_headers = array($columns,$hidden,$sortable,'name'); // Set up columns
     // Process filters and bulk action, if any
     $this->process_filters_and_bulk_action();
-    $this->items = FMReservations_Database::Get_Future_Reservations();
+    $this->items = FMReservations_Database::Get_ReservationsForDate($this->currentDate);
     $total_items = count($this->items);
     $this->set_pagination_args( array (
                 'total_items' => $total_items,
                 'per_page'    => $total_items,
                 'total_pages' => ceil($total_items/$per_page)  ));
+  }
+  function extra_tablenav( $which ) {
+    if ($which == 'top') {
+     ?><input type="hidden" name="current_date" value="<?php echo $this->currentDate; ?>" /><?php 
+    }
+    ?><div class="alignleft actions"><?php
+    FMReservations_Database::make_dates_dropdown($this->currentDate,'current_date_'.$which);
+    submit_button( __( 'Filter' ), 'secondary', 'filter_'.$which, false, 
+                  array( 'id' => 'post-query-submit' ) );
+    echo '</div>';
   }
   function add_item_icon() {
     switch ($this->viewmode) {
@@ -184,102 +216,70 @@ class FMReservations_List_Table extends WP_List_Table {
   }
   function add_item_h2() {
     switch ($this->viewmode) {
-      case 'add': return 'Add Show';
-      case 'edit': return 'Edit Show';
-      case 'view': return 'View Show';
+      case 'add': return 'Add Reservation';
+      case 'edit': return 'Edit Reservation';
+      case 'view': return 'View Reservation';
     }
   }
   function display_one_item_form($returnURL) {
     if ($this->viewmode != 'add') {
       ?><input type="hidden" name="id" value="<?php echo $this->viewid; ?>" /><?php
     }
+    file_put_contents("php://stderr","*** FMReservations_List_Table::display_one_item_form(): \$this->viewitem is ".print_r($this->viewitem,true)."\n");
     ?><table class="form-table">
     <tr valign="top">
       <th scope="row"><label for="fm-thedate" style="width:20%;">Date:</label></th>
-      <td><?php
-    $dateisreadonly = true;
-    if ($this->viewmode == 'add') {$dateisreadonly = false;}
-      if ($this->viewmode == 'edit' &&
-	  FMReservations_Database::NoOpenMics($this->viewitem->thedate)) {
-	$dateisreadonly = false;
-      }
-      if ($dateisreadonly) {
-	?><input type="hidden" name="thedate" value="<?php echo $this->viewitem->thedate; ?>" />
-	  <span id="fm-thedate" style="width:75%;"><?php echo mysql2date('F j, Y',$this->viewitem->thedate); ?></span><?php
-      } else {
-	?><input id="fm-thedate" 
-		 value="<?php echo $this->viewitem->thedate; ?>" 
-		 name="thedate" style="width:75%;" /><?php
-      } ?></td></tr>
+      <td><input type="hidden" name="thedate" value="<?php echo $this->viewitem->thedate; ?>" />
+	  <span id="fm-thedate" style="width:75%;"><?php echo mysql2date('F j, Y',$this->viewitem->thedate); ?></span>
+      </td></tr>
 	  <tr valign="top">
-	    <th scope="row"><label for="fm-artist" style="width:20%;">Artist:</label></th>
-	    <td><input id="fm-artist" 
-			value="<?php echo stripslashes($this->viewitem->artist); ?>"
-			name="artist"
+	    <th scope="row"><label for="fm-name" style="width:20%;">Name:</label></th>
+	    <td><input id="fm-name" 
+			value="<?php echo esc_attr($this->viewitem->name); ?>"
+			name="name"
 			style="width:75%;" <?php if ($this->viewmode == 'view') echo 'readonly="readonly"'; ?> /></td></tr>
 	  <tr valign="top">
-	    <th scope="row"><label for="fm-artistinfo" style="width:20%;">Artist Info:</label></th>
-	    <td><textarea id="fm-artistinfo" name="artistinfo"
-			cols="50" rows="5" 
-	                style="width:75%;" <?php if ($this->viewmode == 'view') echo 'readonly="readonly"'; ?>><?php echo stripslashes($this->viewitem->artistinfo); ?></textarea></td></tr>
-	  <tr valign="top">
-	    <th scope="row"><label for="fm-artisturl" style="width:20%;">Artist URL:</label></th>
-	    <td><input id="fm-artisturl" 
-			value="<?php echo stripslashes($this->viewitem->artisturl); ?>"
-			name="artisturl"
-			style="width:75%;" <?php if ($this->viewmode == 'view') echo 'readonly="readonly"'; ?> /></td></tr>
-	  <tr valign="top">
-	    <th scope="row"><label for="fm-beneficiary" style="width:20%;">Beneficiary:</label></th>
-	    <td><input id="fm-beneficiary" 
-			value="<?php echo stripslashes($this->viewitem->beneficiary); ?>"
-			name="beneficiary"
-			style="width:75%;" <?php if ($this->viewmode == 'view') echo 'readonly="readonly"'; ?> /></td></tr>
-	  <tr valign="top">
-	    <th scope="row"><label for="fm-beneficiaryinfo" style="width:20%;">Beneficiary Info:</label></th>
-	    <td><textarea id="fm-beneficiaryinfo" name="beneficiaryinfo"
-			cols="50" rows="5" 
-	                style="width:75%;" <?php if ($this->viewmode == 'view') echo 'readonly="readonly"'; ?>><?php echo stripslashes($this->viewitem->beneficiaryinfo); ?></textarea></td></tr>
-	  <tr valign="top">
-	    <th scope="row"><label for="fm-beneficiaryurl" style="width:20%;">Beneficiary URL:</label></th>
-	    <td><input id="fm-beneficiaryurl" 
-			value="<?php echo stripslashes($this->viewitem->beneficiaryurl); ?>"
-			name="beneficiaryurl"
+	    <th scope="row"><label for="fm-seatcount" style="width:20%;">Seat Count:</label></th>
+	    <td><input id="fm-seatcount" type="number"
+			value="<?php echo esc_attr($this->viewitem->seatcount); ?>"
+			name="seatcount"
 			style="width:75%;" <?php if ($this->viewmode == 'view') echo 'readonly="readonly"'; ?> /></td></tr>
 	  </table>
 	  <p>
 		<?php switch ($this->viewmode) {
 			case 'add':
-				?><input type="submit" name="addshow" class="button-primary" value="Add Show"><?php
+				?><input type="submit" name="addres" class="button-primary" value="Add Reservation"><?php
 				break;
 			case 'edit':
-				?><input type="submit" name="updateshow" class="button-primary" value="Update Show"><?php
+				?><input type="submit" name="updateres" class="button-primary" value="Update Reservation"><?php
 				break;
 		      } ?>
 	        <a href="<?php echo $returnURL; ?>" class="button-primary">Return</a>
 	  </p><?php
   }
   function check_permissions() {
-    if (!current_user_can('manage_schedule'))
+    if (!current_user_can('manage_reservations'))
     {
       wp_die( __('You do not have sufficient permissions to access this page. (FMSchedule_List_Table)') );
     }
   }
   function prepare_one_item() {
     $this->check_permissions();
-    if ( isset ($_REQUEST['filter_top'] ) && isset( $_REQUEST['season_top'] ) ) {
-      $this->season = $_REQUEST['season_top'];
-    } else if ( isset ($_REQUEST['filter_bottom'] ) && isset( $_REQUEST['season_bottom'] ) ) {
-      $this->season = $_REQUEST['season_bottom'];
+    if ( isset ($_REQUEST['filter_top'] ) && isset( $_REQUEST['current_date_top'] ) ) {
+      $this->currentDate = $_REQUEST['current_date_top'];
+    } else if ( isset ($_REQUEST['filter_bottom'] ) && isset( $_REQUEST['current_date_bottom'] ) ) {
+      $this->currentDate = $_REQUEST['current_date_bottom'];
     } else {
-      $this->season = isset( $_REQUEST['season'] ) ? $_REQUEST['season'] : FMReservations_Database::ThisSeason();
+      $this->currentDate = isset( $_REQUEST['current_date'] ) ? $_REQUEST['current_date'] : FMReservations_Database::NextDate();
     }
     $message = '';
-    if ( isset ($_REQUEST['addshow']) ) {
+    if ( isset ($_REQUEST['addres']) ) {
       $message = $this->checkiteminform();
       $item = $this->getitemfromform();
       if ($message == '') {
-	$newid = FMReservations_Database::InsertNewShow($item);
-	$message = '<p>'.$item->artist.' on '.
+	$newid = FMReservations_Database::InsertNewReservation($item);
+	$message = '<p>'.$item->name.' with '.$item->seatcount.
+                         ' seats  on '.
 			 $item->thedate.' Inserted with id '.
 			 $newid.'.</p>';
 	$this->viewmode = 'edit';
@@ -290,13 +290,14 @@ class FMReservations_List_Table extends WP_List_Table {
 	$this->viewid   = 0;
 	$this->viewitem = $item;
       }
-    } else if ( isset ($_REQUEST['updateshow']) && isset ($_REQUEST['id']) ) {
+    } else if ( isset ($_REQUEST['updateres']) && isset ($_REQUEST['id']) ) {
       $message = $this->checkiteminform();
       $item = $this->getitemfromform();
       $item->id = $_REQUEST['id'];
       if ($message == '') {
-	FMReservations_Database::UpdateShow($item);
-	$message = '<p>'.$item->artist.' on '.
+	FMReservations_Database::UpdateReservation($item);
+	$message = '<p>'.$item->name.' with '.$item->seatcount.
+                        ' seats on '.
 			$item->thedate.' updated.</p>';
       }
       $this->viewmode = 'edit';
@@ -304,42 +305,35 @@ class FMReservations_List_Table extends WP_List_Table {
       $this->viewitem = $item;
     } else {
       $this->viewmode = isset ($_REQUEST['mode']) ? $_REQUEST['mode'] : 'add';
+      file_put_contents("php://stderr","*** FMReservations_List_Table::prepare_one_item(): \$this->viewmode is $this->viewmode\n");
       $this->viewid   = isset ($_REQUEST['id']) ? $_REQUEST['id'] : 0;
+      file_put_contents("php://stderr","*** FMReservations_List_Table::prepare_one_item(): \$this->viewid is $this->viewid\n");
       if ($this->viewmode == 'add') {$this->viewid = 0;}
       if ($this->viewid == 0) {$this->viewmode = 'add';}
       if ($this->viewid != 0) {
-	$this->viewitem = FMReservations_Database::Get_OneShow($this->viewid);
+	$this->viewitem = FMReservations_Database::Get_OneReservation($this->viewid);
       } else {
-        $this->viewitem = FMReservations_Database::Get_BlankShow();
+        $this->viewitem = FMReservations_Database::Get_BlankReservation($this->currentDate);
       }
+      file_put_contents("php://stderr","*** FMReservations_List_Table::prepare_one_item(): \$this->viewitem is ".print_r($this->viewitem,true)."\n");
     }
     return $message;		
   }
   function checkiteminform() {
     $result = '';
-    if ( empty($_REQUEST['artist']) ) {
-      $result .= '<p>Artist missing.</p>';
+    if ( empty($_REQUEST['name']) ) {
+      $result .= '<p>Name missing.</p>';
     }
-    if ( empty($_REQUEST['beneficiary']) ) {
-      $result .= '<p>Beneficiary missing.</p>';
-    }
-    if ( empty($_REQUEST['thedate']) ) {
-      $result .= '<p>Date missing.</p>';
-    } else {
-      $result .= FMReservations_Database::CheckDate('Date', $_REQUEST['thedate']);
+    if ( $_REQUEST['seatcount'] < 1 || $_REQUEST['seatcount'] > 6 ) {
+      $result .= '<p>Seat count too small or too large. Should be at least 1 and not more than 6.</p>';
     }
     return $result;
   }
   function getitemfromform() {
     $itemary = array();
-    foreach (array('thedate','artist','artistinfo','artisturl',
-		   'beneficiary','beneficiaryinfo','beneficiaryurl') 
-			as $field) {
-      $itemary[$field] = $_REQUEST[$field];
-    }
-    $itemary['thedate'] = FMReservations_Database::NormalizeDate($itemary['thedate']);
-    $itemary['artisturl'] = FMReservations_Database::NormalizeURL($itemary['artisturl']);
-    $itemary['beneficiaryurl'] = FMReservations_Database::NormalizeURL($itemary['beneficiaryurl']);
+    $itemary['thedate'] = FMReservations_Database::NormalizeDate($_REQUEST['thedate']);
+    $itemary['name'] = sanitize_text_field($_REQUEST['name']);
+    $itemary['seatcount'] = sanitize_text_field($_REQUEST['seatcount']);
     return (object) $itemary;
   }
 }
