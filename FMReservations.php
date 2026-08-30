@@ -15,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <260829.2258>
+ *  Last Modified : <260830.0905>
  *
  *  Description	
  *
@@ -72,6 +72,7 @@ class FMRESERVATIONS_Plugin {
     register_deactivation_hook(FMRESERVATIONS_PATH, array($this,'deinstall'));
     // Actions: widgets, admin menu, headings (CSS), and dashboard.
     add_action('widgets_init', array($this,'widgets_init'));
+    add_action( 'admin_init', array($this,'admin_init') );
     add_action('admin_menu', array($this,'admin_menu'));
     add_action('wp_head', array($this,'wp_head'));
     add_action('admin_head', array($this,'admin_head'));
@@ -146,6 +147,61 @@ class FMRESERVATIONS_Plugin {
   /* Initialize our widgets */
   function widgets_init() {
   }
+  function admin_init() {
+    // Register a new setting for "FMReservations" page.
+    register_setting( 'FMReservations', 'FMReservations_options' );
+    // Register a new section in the "FMReservations" page.
+    add_settings_section('FMReservations_section_ticket',
+                         __( 'Fullmoon Reservation Ticket Settings', 
+                            'FMReservations'),
+                         array($this, 'TicketSettingsSection'),
+                         'fm-reservations-options');
+                        
+    // Register a new field in the "FMReservations_section_ticket" section, inside the "fm-reservations-options" page.
+    add_settings_field('fm-reservations-ticket-text',
+                       __('Ticket Text', 'FMReservations'),
+                       array($this,'TicketTextField'),
+                       'fm-reservations-options',
+                       'FMReservations_section_ticket',
+                       array('label_for'         => 'ticket-text',
+                             'class'             => 'fmr-option-row'));
+    add_settings_field('fm-reservations-ticket-maxseats',
+                       __('Maximum Seats Per Reservation', 'FMReservations'),
+                       array($this,'TicketMaxSeatsField'),
+                       'fm-reservations-options', 
+                       'FMReservations_section_ticket',
+                       array('label_for'         => 'ticket-maxseats',
+                             'class'             => 'fmr-option-row',
+                             'default-value'     => 6));
+                       
+  }
+  function TicketSettingsSection($args) {
+    ?>
+    <p id="<?php echo esc_attr( $args['id'] ); ?>">
+    <?php esc_html_e( 'Fullmoon Reservation Ticket Settings', 'FMReservations' ); ?></p>
+    <?php
+  }
+  function TicketMaxSeatsField($args) {
+    $options = get_option( 'FMReservations_options' );
+    $value = isset($options[$args['label_for'] ])?$options[$args['label_for'] ]:$args['default-value'];
+  ?><input
+   id="<?php echo esc_attr( $args['label_for'] ); ?>"
+   name="FMReservations_options[<?php echo esc_attr( $args['label_for'] ); ?>]"
+   type="number" min="1" max="20"
+   value="<?php echo esc_attr($value); ?>" />
+  <p class="description">
+  <?php esc_html_e( 'This is the maximum number of seats that can be reserved with a single reservation.', 'FMReservations' ); ?></p><?php
+                   }
+    
+  function TicketTextField($args) {
+    $options = get_option( 'FMReservations_options' );
+  ?><textarea
+   id="<?php echo esc_attr( $args['label_for'] ); ?>"
+     name="FMReservations_options[<?php echo esc_attr( $args['label_for'] ); ?>]"
+     rows="10" cols="60"><?php echo esc_html($options[$args['label_for'] ]); ?></textarea>
+    <p class="description">
+    <?php esc_html_e( 'This is the text to be printed on the reservation ticket.', 'FMReservations' ); ?></p><?php
+  }
   function admin_menu() {
     $screen_id1 = add_menu_page( 'FM Reservations', 'FM Reservations',
                                 'manage_reservations', 'fm-reservations-list',
@@ -159,6 +215,10 @@ class FMRESERVATIONS_Plugin {
                                     'Add New', 'manage_reservations', 
                                     'fm-add-reservation',
                                     array( $this, 'Add_FM_Reservation' ));
+    $screen_id3 = add_options_page('FM Reservations Options','FMReservations',
+                                   'manage_reservations',
+                                   'fm-reservations-options',
+                                   array( $this, 'OptionsPage') );
   }
   function Show_Reservations_Page() {
     $this->reservations_list_table->prepare_items();
@@ -332,6 +392,41 @@ class FMRESERVATIONS_Plugin {
     echo $print_html;
     //wp_die();
 
+  }
+  function OptionsPage() {
+    // check user capabilities
+    if ( ! current_user_can( 'manage_reservations' ) ) {
+      return;
+    }
+    // add error/update messages
+    
+    // check if the user have submitted the settings
+    // WordPress will add the "settings-updated" $_GET parameter to the url
+    if ( isset( $_GET['settings-updated'] ) ) {
+      // add settings saved message with the class of "updated"
+      add_settings_error( 'rm-reservations_messages', 'rm-reservations_message', __( 'Settings Saved', 'FMReservations' ), 'updated' );
+    }
+    
+    // show error/update messages
+    settings_errors( 'rm-reservations_messages' );
+  ?>
+  <div class="wrap">
+    <h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
+    <form action="options.php" method="post">
+    <?php
+      // output security fields for the registered setting "rm-reservations"
+      settings_fields( 'FMReservations' );
+      // output setting sections and their fields
+      // (sections are registered for "FMReservations", each field is registered to a specific section)
+      do_settings_sections( 'fm-reservations-options' );
+      // output save settings button
+      submit_button( 'Save Settings' );
+    ?>
+    </form>
+  </div>
+  <?php
+    
+    
   }
   function wp_head() {
   }
