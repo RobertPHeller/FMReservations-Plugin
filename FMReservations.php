@@ -15,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <260830.0905>
+ *  Last Modified : <260830.0945>
  *
  *  Description	
  *
@@ -184,14 +184,14 @@ class FMRESERVATIONS_Plugin {
   function TicketMaxSeatsField($args) {
     $options = get_option( 'FMReservations_options' );
     $value = isset($options[$args['label_for'] ])?$options[$args['label_for'] ]:$args['default-value'];
-  ?><input
-   id="<?php echo esc_attr( $args['label_for'] ); ?>"
-   name="FMReservations_options[<?php echo esc_attr( $args['label_for'] ); ?>]"
-   type="number" min="1" max="20"
-   value="<?php echo esc_attr($value); ?>" />
-  <p class="description">
-  <?php esc_html_e( 'This is the maximum number of seats that can be reserved with a single reservation.', 'FMReservations' ); ?></p><?php
-                   }
+    ?><input
+         id="<?php echo esc_attr( $args['label_for'] ); ?>"
+         name="FMReservations_options[<?php echo esc_attr( $args['label_for'] ); ?>]"
+         type="number" min="1" max="20"
+         value="<?php echo esc_attr($value); ?>" />
+      <p class="description">
+      <?php esc_html_e( 'This is the maximum number of seats that can be reserved with a single reservation.', 'FMReservations' ); ?></p><?php
+  }
     
   function TicketTextField($args) {
     $options = get_option( 'FMReservations_options' );
