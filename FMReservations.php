@@ -15,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <260830.0945>
+ *  Last Modified : <260830.1256>
  *
  *  Description	
  *
@@ -292,33 +292,35 @@ class FMRESERVATIONS_Plugin {
   }
   function reservation_shortcode($atts, $content=null, $code="") {
     extract( shortcode_atts ( array(), $atts ) );
+    $options = get_option( 'FMReservations_options' );
     $messages = array();
     if ( isset($_REQUEST['EnterReservation']) ) {
-      //do_action('register_reservation_verify', true);
+      do_action('register_reservation_verify', true);
       $dataok = true;
-      //if (class_exists('WPPlugin') && class_exists('ReCAPTCHAPlugin') &&
-      //    class_exists('ReCaptcha') ) {
-      //  $this->recaptcha_options = WPPlugin::retrieve_options('recaptcha_options');
-      //  if ($this->recaptchalib == null) {
-      //    $this->recaptchalib = new ReCaptcha($this->recaptcha_options['secret']);
-      //  }
-      //  $response = $this->recaptchalib->verifyResponse(
-      //                                                  $_SERVER['REMOTE_ADDR'],
-      //                                                  $_POST['g-recaptcha-response']);
-      //  if (!$response->success) {
-      //    $messages[] = '<span id="error"><strong>ReCAPTCHA error:</strong> your captcha response was incorrect -- please try again</span>';
-      //    $dataok = false;
-      //    file_put_contents("php://stderr","*** reservation_shortcode: ReCAPTCHA failed\n");
-      //  }
-      //}
+      if (class_exists('WPPlugin') && class_exists('ReCAPTCHAPlugin') &&
+          class_exists('ReCaptcha') ) {
+        $this->recaptcha_options = WPPlugin::retrieve_options('recaptcha_options');
+        if ($this->recaptchalib == null) {
+          $this->recaptchalib = new ReCaptcha($this->recaptcha_options['secret']);
+        }
+        $response = $this->recaptchalib->verifyResponse(
+                                                        $_SERVER['REMOTE_ADDR'],
+                                                        $_POST['g-recaptcha-response']);
+        if (!$response->success) {
+          $messages[] = '<span id="error"><strong>ReCAPTCHA error:</strong> your captcha response was incorrect -- please try again</span>';
+          $dataok = false;
+          file_put_contents("php://stderr","*** reservation_shortcode: ReCAPTCHA failed\n");
+        }
+      }
       if ( empty($_REQUEST['res_name']) ) {
         $messages[] = '<div id="error"><p>Name missing.</p></div>';
         $dataok = false; 
       }
       $name =  sanitize_text_field($_REQUEST['res_name']);
       $seatcount =  sanitize_text_field($_REQUEST['seatcount']);
-      if ($seatcount < 1 || $seatcount > 6) {
-        $messages[] = '<div id="error"><p>Number of seats is too small or too large: the number of seats must be from 1 to 6.</p></div>';
+      $maxseats = $options['ticket-maxseats'];
+      if ($seatcount < 1 || $seatcount > $maxseats) {
+        $messages[] = '<div id="error"><p>Number of seats is too small or too large: the number of seats must be from 1 to '.$maxseats.'.</p></div>';
         $dataok = false; 
       }
       $thedate = sanitize_text_field($_REQUEST['thedate']);
@@ -337,6 +339,7 @@ class FMRESERVATIONS_Plugin {
         if ($seatcount> 1) { $temp .= 's'; }
         $temp .= ' under the name '.esc_html($name).'</p>';
         $messages[] = $temp;
+        $messages[] = $options['ticket-text'];
         $print_url = add_query_arg(array('id' => $reservationID,
                                       'action' => 'print_reservation_page'),
                                       admin_url('admin-post.php') );
@@ -359,7 +362,7 @@ class FMRESERVATIONS_Plugin {
     $result .= '<tr valign="top"><th  scope="row"><label for="name">Name: </label></th>';
     $result .= '<td><input id="name", name="res_name" /></td></tr>';
     $result .= '<tr valign="top"><th scope="row"><label for="seats">Seats: </label></th>';
-    $result .= '<td><input id="seats" name="seatcount" type="number" value="1" min="1" max="6" /><td>';
+    $result .= '<td><input id="seats" name="seatcount" type="number" value="1" min="1" max="'.$maxseats.'" /><td>';
     $result .= '</tr>';
     $result .= '</table>';
     $result .= '<p><input type="submit" name="EnterReservation" value="Make Reservation" /></tp></form>';
@@ -367,6 +370,7 @@ class FMRESERVATIONS_Plugin {
   }
   function print_reservation() {
     file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::print_reservation()\n");
+    $options = get_option( 'FMReservations_options' );
     $theid = sanitize_text_field($_REQUEST['id']);
     $item = FMReservations_Database::Get_OneReservation($theid);
     $print_html = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'."\n";
@@ -383,7 +387,9 @@ class FMRESERVATIONS_Plugin {
     $print_html .= '<tr><th>Reservation Id:</th><td>'.$item->id.'</td></tr>';
     $print_html .= '<tr><th>Name:</th><td>'.esc_html($item->name).'</td></tr>';
     $print_html .= '<tr><th>Seats:</th><td>'.$item->seatcount.'</td></tr>';
-    $print_html .= "</table></body></html>\n";
+    $print_html .= "</table>\n";
+    $print_html .= $options['ticket-text'];
+    $print_html .= "</body></html>\n";
     
     header("Content-type: text/html");
     header("Cache-Control: must-revalidate, post-check=0, pre-check=0");
