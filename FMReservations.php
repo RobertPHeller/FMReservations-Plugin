@@ -15,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <260829.1931>
+ *  Last Modified : <260829.2258>
  *
  *  Description	
  *
@@ -86,6 +86,10 @@ class FMRESERVATIONS_Plugin {
                        array('fmr-css'),FMRESERVATIONS_VERSION);
       add_action( 'admin_post_print_reservations', 
                  array($this,'print_reservations') );
+      add_action( 'admin_post_nopriv_print_reservation_page',
+                 array($this,'print_reservation') );
+      add_action( 'admin_post_print_reservation_page',
+                 array($this,'print_reservation') );
     }
   }
   function customSgrRenderList(array $list): array //Where reCAPTCHA is rendered
@@ -247,11 +251,11 @@ class FMRESERVATIONS_Plugin {
       //    file_put_contents("php://stderr","*** reservation_shortcode: ReCAPTCHA failed\n");
       //  }
       //}
-      if ( empty($_REQUEST['name']) ) {
+      if ( empty($_REQUEST['res_name']) ) {
         $messages[] = '<div id="error"><p>Name missing.</p></div>';
         $dataok = false; 
       }
-      $name =  sanitize_text_field($_REQUEST['name']);
+      $name =  sanitize_text_field($_REQUEST['res_name']);
       $seatcount =  sanitize_text_field($_REQUEST['seatcount']);
       if ($seatcount < 1 || $seatcount > 6) {
         $messages[] = '<div id="error"><p>Number of seats is too small or too large: the number of seats must be from 1 to 6.</p></div>';
@@ -264,16 +268,24 @@ class FMRESERVATIONS_Plugin {
               'name' => $name,
               'seatcount' => $seatcount,
               'id' => 0);
+        file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::reservation_shortcode(): item is ".print_r($item,true)."\n");
         $reservationID = FMReservations_Database::InsertNewReservation($item);
-        $print_url = wp_nonce_url( 
-                  add_query_arg(array('id' => $reservationID,
+        file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::reservation_shortcode(): reservationID is $reservationID\n");
+        $temp = '<p style="font-size: 200%;color:green">';
+        $temp .= 'Your reservation number is '.$reservationID;
+        $temp .= ' for '.$seatcount.' seat';
+        if ($seatcount> 1) { $temp .= 's'; }
+        $temp .= ' under the name '.esc_html($name).'</p>';
+        $messages[] = $temp;
+        $print_url = add_query_arg(array('id' => $reservationID,
                                       'action' => 'print_reservation_page'),
-                                      admin_url('admin.php') )); 
-        ?><script>
-        var url = '<?php echo $print_url; ?>';
-        var name = 'win2';
-        var opts = 'status=no,toolbar=no,scrollbars=yes,titlebar=no,menubar=no,resizable=yes,width=640,height=480,directories=no,location=no';
-        </script)<?php
+                                      admin_url('admin-post.php') );
+        $temp = '<p><h2><a href="'.$print_url.'" class="button add-new-h2"';
+        $temp .= 'title="Print" target="_blank" onclick="';
+        $temp .= "window.open(this.href,'win2','status=no,toolbar=no,scrollbars=yes,titlebar=no,menubar=no,resizable=yes,width=640,height=480,directories=no,location=no'); return false;";
+        $temp .= '" rel="nofollow">Print Reservation Slip</a></h2></p>';
+        $messages[] = $temp;
+        //$print_url_nonce = wp_nonce_url(  ); 
       }
     }
     $result = '';
@@ -281,16 +293,45 @@ class FMRESERVATIONS_Plugin {
       $result .= $m;
     }
     $result .= '<form name="reservation" method="POST" action="">';
+    $result .= '<table class="form-table">';
     $dates = FMReservations_Database::make_dates_dropdown_r();
-    $result .= '<table class="form-table">'.$dates;
-    $result .= '<tr valign="top"><th  scope="row"><label for="name">Name: </label></th><td><input id="name", name="name" /><td></tr>';
-    $result .= '<tr valign="top"><th scope="row"><label for="seats">Seats: </label></th><td><input id="seats" name="seatcount" type="number" value="1" min="1" max="6" /><td></tr></table>';
-    //ob_start();
-    //$test = do_action('register_reservation_form');
-    //$temp = ob_get_clean();
-    //$result .= $temp;
+    $result .= $dates;
+    $result .= '<tr valign="top"><th  scope="row"><label for="name">Name: </label></th>';
+    $result .= '<td><input id="name", name="res_name" /></td></tr>';
+    $result .= '<tr valign="top"><th scope="row"><label for="seats">Seats: </label></th>';
+    $result .= '<td><input id="seats" name="seatcount" type="number" value="1" min="1" max="6" /><td>';
+    $result .= '</tr>';
+    $result .= '</table>';
     $result .= '<p><input type="submit" name="EnterReservation" value="Make Reservation" /></tp></form>';
     return $result;
+  }
+  function print_reservation() {
+    file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::print_reservation()\n");
+    $theid = sanitize_text_field($_REQUEST['id']);
+    $item = FMReservations_Database::Get_OneReservation($theid);
+    $print_html = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'."\n";
+    $print_html .= '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en-gb" lang="en-gb" dir="ltr">'."\n";
+    $print_html .= '<head><title>Wendell Full Moon Coffeehouse Reservation';
+    $print_html .= '</title>';
+    $print_html .= '<style type="text/css" media="print">'."\n";
+    $print_html .= 'a.navigate {display: none;}</style></head>';
+    $print_html .= '<body><h1>Wendell Full Moon Coffeehouse Reservation</h1>';
+    $print_html .= '<div style="float: right;"><a class="navigate" href="#" onclick="window.print();return false;">Print</a>&nbsp;<a class="navigate" href="#" onclick="window.close();return false;">Close</a></div>'."\n";
+    $print_html .= '<br clear="all" />'."\n";
+    $print_html .= '<div style="float:left"><img src="'.FMRESERVATIONS_PLUGIN_IMAGE_URL.'/small_logo_flat.png" />';
+    $print_html .= '<table><tr><th>Date: </th><td>'.mysql2date('F j, Y',$item->thedate).'</td></tr>';
+    $print_html .= '<tr><th>Reservation Id:</th><td>'.$item->id.'</td></tr>';
+    $print_html .= '<tr><th>Name:</th><td>'.esc_html($item->name).'</td></tr>';
+    $print_html .= '<tr><th>Seats:</th><td>'.$item->seatcount.'</td></tr>';
+    $print_html .= "</table></body></html>\n";
+    
+    header("Content-type: text/html");
+    header("Cache-Control: must-revalidate, post-check=0, pre-check=0");
+    header("Content-Length: " . strlen($print_html));
+   
+    echo $print_html;
+    //wp_die();
+
   }
   function wp_head() {
   }

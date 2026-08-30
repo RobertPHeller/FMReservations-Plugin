@@ -9,7 +9,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 16:01:04
- *  Last Modified : <260829.1633>
+ *  Last Modified : <260829.2023>
  *
  *  Description	
  *
@@ -141,6 +141,7 @@ class FMReservations_Database {
     return $wpdb->get_row($sql, 'OBJECT');
   }
   public static function InsertNewReservation($item) {
+    file_put_contents("php://stderr","*** FMReservations_Database::InsertNewReservation(): item is ".print_r($item,true)."\n");
     $thedate   = $item->thedate;
     $seatcount = $item->seatcount;
     $name      = $item->name;
@@ -149,6 +150,7 @@ class FMReservations_Database {
                                              "seatcount" => $seatcount,
                                              "name" => $name),
                                              array("%s","%d","%s"));
+    file_put_contents("php://stderr","*** FMReservations_Database::InsertNewReservation(): inserted with id ".$wpdb->insert_id."\n");
     return $wpdb->insert_id;
   }
   public static function UpdateReservation($item) {
