@@ -2,7 +2,7 @@
 /** -*- php -*- ****************************************************************
   * Plugin Name: Wendell Full Moon Reservations WP Plugin
   * Description: A plugin that implements a seat reservation system for Wendell Full Moon shows.
-  * Version 1.0.0
+  * Version 1.0.3
   * Author: Robert Heller
   * Author URI: http://www.deepsoft.com/
   * Requires Plugins: FMSchedule
@@ -15,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <260830.1259>
+ *  Last Modified : <260830.1342>
  *
  *  Description	
  *
@@ -148,6 +148,8 @@ class FMRESERVATIONS_Plugin {
   function widgets_init() {
   }
   function admin_init() {
+    add_option('FMReservations_options',array('ticket-text' => '',
+                                              'ticket-maxseats' => 6));
     // Register a new setting for "FMReservations" page.
     register_setting( 'FMReservations', 'FMReservations_options' );
     // Register a new section in the "FMReservations" page.
@@ -269,7 +271,13 @@ class FMRESERVATIONS_Plugin {
      $print_html .= "</li>\n";
    }
    
-   $print_html .= "</ol>\n</body></html>\n";
+   $print_html .= "</ol>\n";
+   $totalseats = FMReservations_Database::TotalReservedSeatsForDate($thedate);
+   $print_html .= "<p>A total of ".$totalseats." seat";
+   if ($totalseats>1) {
+     $print_html .= 's';
+   }
+   $print_html .= ".</body></html>\n";
    
    header("Content-type: text/html");
    header("Cache-Control: must-revalidate, post-check=0, pre-check=0");
@@ -293,6 +301,7 @@ class FMRESERVATIONS_Plugin {
   function reservation_shortcode($atts, $content=null, $code="") {
     extract( shortcode_atts ( array(), $atts ) );
     $options = get_option( 'FMReservations_options' );
+    $maxseats = $options['ticket-maxseats'];
     $messages = array();
     if ( isset($_REQUEST['EnterReservation']) ) {
       do_action('register_reservation_verify', true);
@@ -318,7 +327,6 @@ class FMRESERVATIONS_Plugin {
       }
       $name =  sanitize_text_field($_REQUEST['res_name']);
       $seatcount =  sanitize_text_field($_REQUEST['seatcount']);
-      $maxseats = $options['ticket-maxseats'];
       if ($seatcount < 1 || $seatcount > $maxseats) {
         $messages[] = '<div id="error"><p>Number of seats is too small or too large: the number of seats must be from 1 to '.$maxseats.'.</p></div>';
         $dataok = false; 
@@ -335,7 +343,7 @@ class FMRESERVATIONS_Plugin {
         file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::reservation_shortcode(): reservationID is $reservationID\n");
         $temp = '<p style="font-size: 200%;color:green">';
         $temp .= 'Your reservation number is '.$reservationID;
-        $temp .= ' for '.$seatcount.' seat';
+        $temp .= ' for '.$seatcount.' seat at the Full Moon Coffeehouse show on '.mysql2date('F j, Y',$item->thedate);
         if ($seatcount> 1) { $temp .= 's'; }
         $temp .= ' under the name '.esc_html($name).'</p>';
         $messages[] = $temp;
