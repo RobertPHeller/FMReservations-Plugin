@@ -2,7 +2,7 @@
 /** -*- php -*- ****************************************************************
   * Plugin Name: Wendell Full Moon Reservations WP Plugin
   * Description: A plugin that implements a seat reservation system for Wendell Full Moon shows.
-  * Version 1.0.3
+  * Version 1.0.4
   * Author: Robert Heller
   * Author URI: http://www.deepsoft.com/
   * Requires Plugins: FMSchedule
@@ -15,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <260830.1342>
+ *  Last Modified : <260905.0644>
  *
  *  Description	
  *
@@ -149,7 +149,9 @@ class FMRESERVATIONS_Plugin {
   }
   function admin_init() {
     add_option('FMReservations_options',array('ticket-text' => '',
-                                              'ticket-maxseats' => 6));
+                                              'ticket-maxseats' => 6,
+                                              'site-key' => '',
+                                              'secret-key' => ''));
     // Register a new setting for "FMReservations" page.
     register_setting( 'FMReservations', 'FMReservations_options' );
     // Register a new section in the "FMReservations" page.
@@ -176,6 +178,30 @@ class FMRESERVATIONS_Plugin {
                              'class'             => 'fmr-option-row',
                              'default-value'     => 6));
                        
+    // Register a new section in the "FMReservations" page.
+    add_settings_section('FMReservations_section_recaptcha',
+                         __( 'Fullmoon Reservation ReCaptcha Settings', 
+                            'FMReservations'),
+                         array($this, 'reCaptchaSettingsSection'),
+                         'fm-reservations-options');
+    // Register a new field in the "FMReservations_section_recaptcha" section, inside the "fm-reservations-options" page.
+    add_settings_field('fm-reservations-recaptcha-site-key',
+                       __('Site key', 'FMReservations'),
+                       array($this, 'ReCaptchaSettingsSiteKey'),
+                       'fm-reservations-options',
+                       'FMReservations_section_recaptcha',
+                       array('label_for' => 'site-key',
+                             'class'      => 'fms-option-row'));
+    file_put_contents("php://stderr","*** FMReservations_Plugin::admin_init(), add_settings_field #1 returns\n");
+    // Register a new field in the "FMReservations_section_recaptcha" section, inside the "fm-reservations-options" page.
+    add_settings_field('fm-reservations-recaptcha-secret-key',
+                       __('Secret key', 'FMReservations'),
+                       array($this, 'ReCaptchaSettingsSecretKey'),
+                       'fm-reservations-options',
+                       'FMReservations_section_recaptcha',
+                       array('label_for' => 'secret-key',
+                             'class'      => 'fms-option-row'));
+    file_put_contents("php://stderr","*** FMReservations_Plugin::admin_init(), add_settings_field #2 returns\n");
   }
   function TicketSettingsSection($args) {
     ?>
@@ -204,6 +230,39 @@ class FMRESERVATIONS_Plugin {
     <p class="description">
     <?php esc_html_e( 'This is the text to be printed on the reservation ticket.', 'FMReservations' ); ?></p><?php
   }
+  function ReCaptchaSettingsSection($args) {
+    //file_put_contents("php://stderr","*** FMReservations_Plugin::ReCaptchaSettingsSection(".print_r($args,true)."\n");
+    ?>
+    <p id="<?php echo esc_attr( $args['id'] ); ?>">
+    <?php esc_html_e( 'Fullmoon FMReservations reCaptcha Settings', 'FMReservations' ); ?></p>
+    <!-- End of ReCaptchaSettingsSection -->
+    <?php
+  }
+  function ReCaptchaSettingsSiteKey($args) {
+    file_put_contents("php://stderr","*** FMReservations_Plugin::ReCaptchaSettingsSiteKey(".print_r($args,true)."\n");
+    $options = get_option( 'FMReservations_options' );
+    $value = isset($options[$args['label_for'] ])?$options[$args['label_for'] ]:$args['default-value'];
+    ?><input
+        id="<?php echo esc_attr( $args['label_for'] ); ?>"
+        name="FMReservations_options[<?php echo esc_attr( $args['label_for'] ); ?>]"
+        type="text" size="50"
+        value="<?php echo esc_attr($value); ?>" />
+       <p class="description">
+       <?php esc_html_e( 'This is reCaptcha Site Key', 'FMReservations' ); ?></p><?php
+  }
+  function ReCaptchaSettingsSecretKey($args) {
+    file_put_contents("php://stderr","*** FMReservations_Plugin::ReCaptchaSettingsSecretKey(".print_r($args,true)."\n");
+    $options = get_option( 'FMReservations_options' );
+    $value = isset($options[$args['label_for'] ])?$options[$args['label_for'] ]:$args['default-value'];
+    ?><input
+        id="<?php echo esc_attr( $args['label_for'] ); ?>"
+        name="FMReservations_options[<?php echo esc_attr( $args['label_for'] ); ?>]"
+        type="text" size="50"
+        value="<?php echo esc_attr($value); ?>" />
+       <p class="description">
+       <?php esc_html_e( 'This is reCaptcha Secret Key', 'FMReservations' ); ?></p><?php
+  }
+  
   function admin_menu() {
     $screen_id1 = add_menu_page( 'FM Reservations', 'FM Reservations',
                                 'manage_reservations', 'fm-reservations-list',
@@ -299,26 +358,36 @@ class FMRESERVATIONS_Plugin {
 								 admin_url('admin.php')) ); ?></form><br class="clear" /></div><div class="clear"></div><?php
   }
   function reservation_shortcode($atts, $content=null, $code="") {
+    $apiUrl = 'https://www.google.com/recaptcha/api.js';
+    wp_enqueue_script('google-recaptcha',
+                      $apiUrl,
+                      [],
+                      FMRESERVATIONS_VERSION,
+                      array ("strategy" => ["async", "defer"])
+                      );       
     extract( shortcode_atts ( array(), $atts ) );
     $options = get_option( 'FMReservations_options' );
     $maxseats = $options['ticket-maxseats'];
     $messages = array();
     if ( isset($_REQUEST['EnterReservation']) ) {
-      do_action('register_reservation_verify', true);
       $dataok = true;
-      if (class_exists('WPPlugin') && class_exists('ReCAPTCHAPlugin') &&
-          class_exists('ReCaptcha') ) {
-        $this->recaptcha_options = WPPlugin::retrieve_options('recaptcha_options');
-        if ($this->recaptchalib == null) {
-          $this->recaptchalib = new ReCaptcha($this->recaptcha_options['secret']);
-        }
-        $response = $this->recaptchalib->verifyResponse(
-                                                        $_SERVER['REMOTE_ADDR'],
-                                                        $_POST['g-recaptcha-response']);
-        if (!$response->success) {
-          $messages[] = '<span id="error"><strong>ReCAPTCHA error:</strong> your captcha response was incorrect -- please try again</span>';
+      if (empty($_REQUEST['g-recaptcha-response'])) {
+        $messages[] = '<div id="error"><p>No reCaptcha response.</p></div>';
+        $dataok = false;
+      } else {
+        $secretKey = $options['secret-key'];
+        $recaptchaResponse = $_REQUEST['g-recaptcha-response'];
+        $verifyURL = "https://www.google.com/recaptcha/api/siteverify";
+        $body = array('secret' => $secretKey,
+                      'response' => $recaptchaResponse,
+                      'remoteip' => $_SERVER['REMOTE_ADDR']
+                      );
+        $verifyResponse = wp_remote_post($verifyURL, array('body' => $body));
+        //file_put_contents("php://stderr","*** fmschedule_openmic_func: verifyResponse is ".print_r($verifyResponse,true)."\n");
+        $verified = json_decode($verifyResponse['body'],false);
+        if ($verified->success == false) {
+          $messages[] = '<div id="error"><p>ReCaptcha failed.</p></div>';
           $dataok = false;
-          file_put_contents("php://stderr","*** reservation_shortcode: ReCAPTCHA failed\n");
         }
       }
       if ( empty($_REQUEST['res_name']) ) {
@@ -373,6 +442,13 @@ class FMRESERVATIONS_Plugin {
     $result .= '<td><input id="seats" name="seatcount" type="number" value="1" min="1" max="'.$maxseats.'" /><td>';
     $result .= '</tr>';
     $result .= '</table>';
+    $siteKey = $options['site-key'];
+    $recaptcha = '<div class="g-recaptcha"';
+    $recaptcha .= ' data-sitekey="' . esc_attr($siteKey) . '"';
+    $recaptcha .= ' id="FMReservations-open-mic"';
+    //$recaptcha .= ' data-callback="FMFMReservationsOpenMicSuccessCallback"';
+    $recaptcha .= '></div>';
+    $result .= '  <div name="g-recaptcha-response">'.$recaptcha.'</div>';
     $result .= '<p><input type="submit" name="EnterReservation" value="Make Reservation" /></tp></form>';
     return $result;
   }
