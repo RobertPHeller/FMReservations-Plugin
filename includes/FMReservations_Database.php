@@ -9,7 +9,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 16:01:04
- *  Last Modified : <260829.2023>
+ *  Last Modified : <261118.2056>
  *
  *  Description	
  *
@@ -79,12 +79,15 @@ class FMReservations_Database {
        if (method_exists('FMSchedule_Database','Get_UpcomingShows')) {
          $shows = FMSchedule_Database::Get_UpcomingShows();
          file_put_contents("php://stderr","*** -: shows = ".print_r($shows,true)."\n");
-         if ($thedate == '' && count($shows) > 0) {
-           $thedate = $shows[0]['thedate'];
-         }
+         //if ($thedate == '' && count($shows) > 0) {
+         //  $thedate = $shows[0]['thedate'];
+         //}
          for ($i = 0; $i < count($shows); $i++) {
            $date = $shows[$i]['thedate'];
+           $seatCount = FMReservations_Database::TotalReservedSeatsForDate($date);
+           if ($seatCount > 95) continue;
            ?><option value="<?php echo $date; ?>" <?php
+           if ($thedate == '') { $thedate = $date; } 
            if ($date == $thedate) { echo 'selected="selected"'; }
            ?>><?php echo $date . ": " . $shows[$i]['artist']; ?></option><?php
          }
@@ -96,12 +99,15 @@ class FMReservations_Database {
     $result .= '<td><select name="'.$name.'" id="FM_ate">';
     if (method_exists('FMSchedule_Database','Get_UpcomingShows')) {
       $shows = FMSchedule_Database::Get_UpcomingShows();
-      if ($thedate == '' && count($shows) > 0) {
-        $thedate = $shows[0]['thedate'];
-      }
+      //if ($thedate == '' && count($shows) > 0) {
+      //  $thedate = $shows[0]['thedate'];
+      //}
       for ($i = 0; $i < count($shows); $i++) {
         $date = $shows[$i]['thedate'];
+        $seatCount = FMReservations_Database::TotalReservedSeatsForDate($date);
+        if ($seatCount > 95) continue;
         $result .= '<option value="'.$date.'"';
+        if ($thedate == '') { $thedate = $date; }
         if ($date == $thedate) { $result .=  ' selected="selected"'; }
         $result .= '>'.$date . ": " . $shows[$i]['artist'].'</option>';
       }

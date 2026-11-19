@@ -2,7 +2,7 @@
 /** -*- php -*- ****************************************************************
   * Plugin Name: Wendell Full Moon Reservations WP Plugin
   * Description: A plugin that implements a seat reservation system for Wendell Full Moon shows.
-  * Version 1.0.4
+  * Version 1.0.5
   * Author: Robert Heller
   * Author URI: http://www.deepsoft.com/
   * Requires Plugins: FMSchedule
@@ -15,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <260905.0644>
+ *  Last Modified : <261118.2056>
  *
  *  Description	
  *
