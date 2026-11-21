@@ -2,7 +2,7 @@
 /** -*- php -*- ****************************************************************
   * Plugin Name: Wendell Full Moon Reservations WP Plugin
   * Description: A plugin that implements a seat reservation system for Wendell Full Moon shows.
-  * Version 1.0.5
+  * Version 1.0.5a
   * Author: Robert Heller
   * Author URI: http://www.deepsoft.com/
   * Requires Plugins: FMSchedule
@@ -15,7 +15,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 15:44:49
- *  Last Modified : <261118.2056>
+ *  Last Modified : <261120.1429>
  *
  *  Description	
  *
@@ -78,6 +78,7 @@ class FMRESERVATIONS_Plugin {
     add_action('admin_head', array($this,'admin_head'));
     add_action('wp_dashboard_setup', array($this,'wp_dashboard_setup'));
     add_shortcode('fmreservation', array($this,'reservation_shortcode'));
+    add_action( 'plugins_loaded', array($this,'update_db_check'));
     wp_enqueue_style('fmr-css', 
                      FMRESERVATIONS_PLUGIN_CSS_URL  . '/FMReservations.css',
                      null,FMRESERVATIONS_VERSION);
@@ -127,7 +128,16 @@ class FMRESERVATIONS_Plugin {
     }
     add_action('sgr_render_list', array($this,'customSgrRenderList'));
     add_action('sgr_verify_list', array($this,'customSgrVerifyList'));
-    FMReservations_Database::make_reservations_table();
+  }
+  function update_db_check() {
+    $options = get_option( 'FMReservations_options' );
+    file_put_contents("php://stderr","*** FMReservations_Plugin::update_db_check options is ".print_r($options,true)."\n");
+    if (!$options || !isset($options['db_version']) || 
+        $options['db_version'] != FMReservations_Database::$db_version ) {
+      FMReservations_Database::make_reservations_table();
+      $options['db_version'] = FMReservations_Database::$db_version;
+      update_option(  'FMReservations_options' , $options );
+    }
   }
   /* Deactivation hook: remove privs and cron job */
   function deinstall() {
@@ -151,7 +161,8 @@ class FMRESERVATIONS_Plugin {
     add_option('FMReservations_options',array('ticket-text' => '',
                                               'ticket-maxseats' => 6,
                                               'site-key' => '',
-                                              'secret-key' => ''));
+                                              'secret-key' => '',
+                                              'reservation-max' => 50));
     // Register a new setting for "FMReservations" page.
     register_setting( 'FMReservations', 'FMReservations_options' );
     // Register a new section in the "FMReservations" page.
@@ -177,6 +188,20 @@ class FMRESERVATIONS_Plugin {
                        array('label_for'         => 'ticket-maxseats',
                              'class'             => 'fmr-option-row',
                              'default-value'     => 6));
+    add_settings_section('FMReservations_section_show',
+                         __( 'Fullmoon Reservation Ticket Settings', 
+                            'FMReservations'),
+                         array($this, 'ShowSettingsSection'),
+                         'fm-reservations-options');
+    
+    add_settings_field('fm-reservations-reservation-max',
+                       __('Maximum Seats Reservable Per Show', 'FMReservations'),
+                       array($this,'ReservationMaxField'),
+                       'fm-reservations-options',
+                       'FMReservations_section_show',
+                       array('label_for'         => 'reservation-max',
+                             'class'             => 'fmr-option-row',
+                              'default-value'     => 50));
                        
     // Register a new section in the "FMReservations" page.
     add_settings_section('FMReservations_section_recaptcha',
@@ -229,6 +254,23 @@ class FMRESERVATIONS_Plugin {
      rows="10" cols="60"><?php echo esc_html($options[$args['label_for'] ]); ?></textarea>
     <p class="description">
     <?php esc_html_e( 'This is the text to be printed on the reservation ticket.', 'FMReservations' ); ?></p><?php
+  }
+  function ShowSettingsSection($args) {
+    ?>
+    <p id="<?php echo esc_attr( $args['id'] ); ?>">
+    <?php esc_html_e( 'Fullmoon Reservation Show Settings', 'FMReservations' ); ?></p>
+    <?php
+  }
+  function ReservationMaxField($args) {
+    $options = get_option( 'FMReservations_options' );
+    $value = isset($options[$args['label_for'] ])?$options[$args['label_for'] ]:$args['default-value'];
+    ?><input
+         id="<?php echo esc_attr( $args['label_for'] ); ?>"
+         name="FMReservations_options[<?php echo esc_attr( $args['label_for'] ); ?>]"
+         type="number" min="40" max="90"
+         value="<?php echo esc_attr($value); ?>" />
+      <p class="description">
+      <?php esc_html_e( 'This is the maximum number of seats that can be reserved for a given show.', 'FMReservations' ); ?></p><?php
   }
   function ReCaptchaSettingsSection($args) {
     //file_put_contents("php://stderr","*** FMReservations_Plugin::ReCaptchaSettingsSection(".print_r($args,true)."\n");
@@ -368,6 +410,7 @@ class FMRESERVATIONS_Plugin {
     extract( shortcode_atts ( array(), $atts ) );
     $options = get_option( 'FMReservations_options' );
     $maxseats = $options['ticket-maxseats'];
+    $reservation_max = $options['reservation-max'];
     $messages = array();
     if ( isset($_REQUEST['EnterReservation']) ) {
       $dataok = true;
@@ -401,11 +444,23 @@ class FMRESERVATIONS_Plugin {
         $dataok = false; 
       }
       $thedate = sanitize_text_field($_REQUEST['thedate']);
+      $thedate = FMReservations_Database::NormalizeDate($thedate);
+      $email = sanitize_email($_REQUEST['email']);
+      if (!FMReservations_Database::CheckDupEmailForDate($thedate,$email)) {
+        $messages[] = '<div id="error"><p>This E-Mail ('.$email.') has already reserved seats.</p></div>';
+        $dataok = false;
+      }
+      if ( ($seatcount + FMReservations_Database::TotalReservedSeatsForDate($thedate)) >
+          $reservation_max ) {
+        $messages[] = '<div id="error"><p>Number of seats available is too few or the show\'s seats available for reservation has been exhausted.</p></div>';
+        $dataok = false;
+      }
       if ($dataok) { 
         $item = (object)
-        array('thedate' => FMReservations_Database::NormalizeDate($thedate),
+        array('thedate' => $thedate,
               'name' => $name,
               'seatcount' => $seatcount,
+              'email' => $email,
               'id' => 0);
         file_put_contents("php://stderr","*** FMRESERVATIONS_Plugin::reservation_shortcode(): item is ".print_r($item,true)."\n");
         $reservationID = FMReservations_Database::InsertNewReservation($item);
@@ -440,6 +495,9 @@ class FMRESERVATIONS_Plugin {
     $result .= '<td><input id="name", name="res_name" /></td></tr>';
     $result .= '<tr valign="top"><th scope="row"><label for="seats">Seats: </label></th>';
     $result .= '<td><input id="seats" name="seatcount" type="number" value="1" min="1" max="'.$maxseats.'" /><td>';
+    $result .= '</tr>';
+    $result .= '<tr valign="top"><th scope="row"><label for="email">EMail: </label></th>';
+    $result .= '<td><input id="email" name="email" type="email"  /><td>';
     $result .= '</tr>';
     $result .= '</table>';
     $siteKey = $options['site-key'];

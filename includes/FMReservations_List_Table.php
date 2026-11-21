@@ -9,7 +9,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-29 03:10:02
- *  Last Modified : <260829.1736>
+ *  Last Modified : <261120.1641>
  *
  *  Description	
  *
@@ -122,10 +122,19 @@ class FMReservations_List_Table extends WP_List_Table {
   function column_seatcount ($item) {
     return $item->seatcount;
   }
+  function column_email ($item) { 
+    if ($item->email != '') {
+      return '<a href="mailto:'.$item->email.'">'.$item->email.'</a>';
+    } else {
+      return '&nbsp;';
+    }
+  }
+      
   function get_columns() { 
     return array ('cb' => '<input type="checkbox" />',
                   'name' => 'Name',
-                  'seatcount' => 'Seats'
+                  'seatcount' => 'Seats',
+                  'email' => 'EMail'
                   );
   }
   function get_sortable_columns() {return array('name');} 
@@ -178,6 +187,15 @@ class FMReservations_List_Table extends WP_List_Table {
     }
     $this->process_bulk_action();
   }
+  function get_items_per_page ($option, $default = 20) {
+    if ( isset($_REQUEST['screen-options-apply']) &&
+        $_REQUEST['wp_screen_options']['option'] == $option ) {
+      $per_page = (int) $_REQUEST['wp_screen_options']['value'];
+    } else {
+      $per_page = $default;
+    }
+    return (int) apply_filters( $option, $per_page );
+  }
   function prepare_items() {
     // Check permissions
     $this->check_permissions();
@@ -190,12 +208,25 @@ class FMReservations_List_Table extends WP_List_Table {
     $this->_column_headers = array($columns,$hidden,$sortable,'name'); // Set up columns
     // Process filters and bulk action, if any
     $this->process_filters_and_bulk_action();
-    $this->items = FMReservations_Database::Get_ReservationsForDate($this->currentDate);
-    $total_items = count($this->items);
+    $all_items = FMReservations_Database::Get_ReservationsForDate($this->currentDate);
+    file_put_contents("php://stderr","*** FMReservations_List_Table::prepare_items(): screen is ".print_r($screen,true)."\n");
+    $option = 'fmr_reservatons-per-page' ;
+    file_put_contents("php://stderr","*** FMReservations_List_Table::prepare_items(): option is $option \n");
+    $per_page = $this->get_items_per_page( $option );
+    $total_items = count($all_items);
     $this->set_pagination_args( array (
                 'total_items' => $total_items,
-                'per_page'    => $total_items,
+                'per_page'    => $per_page,
                 'total_pages' => ceil($total_items/$per_page)  ));
+    $total_pages = $this->get_pagination_arg( 'total_pages' );
+    $pagenum = $this->get_pagenum();
+    if ($pagenum < 1) {
+      $pagenum = 1;
+    } else if ($pagenum > $total_pages && $total_pages > 0) {
+      $pagenum = $total_pages;
+    }
+    $start = ($pagenum-1)*$per_page;
+    $this->items = array_slice( $all_items,$start,$per_page );
   }
   function extra_tablenav( $which ) {
     if ($which == 'top') {
@@ -243,6 +274,12 @@ class FMReservations_List_Table extends WP_List_Table {
 	    <td><input id="fm-seatcount" type="number"
 			value="<?php echo esc_attr($this->viewitem->seatcount); ?>"
 			name="seatcount"
+			style="width:75%;" <?php if ($this->viewmode == 'view') echo 'readonly="readonly"'; ?> /></td></tr>
+           <tr valign="top"> 
+             <th scope="row"><label for="fm-email" style="width:20%;">EMail:</label></th>
+	    <td><input id="fm-email" type="email"
+			value="<?php echo esc_attr($this->viewitem->email); ?>"
+			name="email"
 			style="width:75%;" <?php if ($this->viewmode == 'view') echo 'readonly="readonly"'; ?> /></td></tr>
 	  </table>
 	  <p>
@@ -327,6 +364,9 @@ class FMReservations_List_Table extends WP_List_Table {
     if ( $_REQUEST['seatcount'] < 1 || $_REQUEST['seatcount'] > 6 ) {
       $result .= '<p>Seat count too small or too large. Should be at least 1 and not more than 6.</p>';
     }
+    if ( empty($_REQUEST['email']) ) {
+      $result .= '<p>EMail missing.</p>';
+    }
     return $result;
   }
   function getitemfromform() {
@@ -334,6 +374,7 @@ class FMReservations_List_Table extends WP_List_Table {
     $itemary['thedate'] = FMReservations_Database::NormalizeDate($_REQUEST['thedate']);
     $itemary['name'] = sanitize_text_field($_REQUEST['name']);
     $itemary['seatcount'] = sanitize_text_field($_REQUEST['seatcount']);
+    $itemary['email'] = sanitize_email($_REQUEST['email']);
     return (object) $itemary;
   }
 }

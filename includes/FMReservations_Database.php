@@ -9,7 +9,7 @@
  *  Author        : $Author$
  *  Created By    : Robert Heller
  *  Created       : 2026-08-28 16:01:04
- *  Last Modified : <261118.2056>
+ *  Last Modified : <261120.1621>
  *
  *  Description	
  *
@@ -46,20 +46,43 @@ define('FMRESERVATIONS_TABLE',$wpdb->prefix . "FMReservations");
 //file_put_contents("php://stderr","*** FMRESERVATIONS_TABLE ".FMRESERVATIONS_TABLE."\n\n\n\n"); 
 
 class FMReservations_Database {
+  public static $db_version = 2.0;
+  static function database_version () {
+    global $wpdb;
+    if ($wpdb->get_var("SHOW TABLES LIKE '" .FMRESERVATIONS_TABLE. "'") != FMRESERVATIONS_TABLE) {
+      return 0.0;
+    }
+    $emailrow = $wpdb->get_row('DESCRIBE '.FMRESERVATIONS_TABLE.' email',  'ARRAY_A' );
+    if (is_null($emailrow) || count($emailrow) < 1) {
+      return 1.0;
+    } else {
+      return 2.0;
+    }
+  }
   public static function make_reservations_table() {
     global $wpdb;
-    //file_put_contents("php://stderr","*** FMReservations_Database::make_reservations_table");
-    $sql = "CREATE TABLE " . FMRESERVATIONS_TABLE . "(
+    $vers = FMReservations_Database::database_version();
+    file_put_contents("php://stderr","*** FMReservations_Database::make_reservations_table, existing version is $vers\n");
+    if ($vers < 1.0) {
+      file_put_contents("php://stderr","*** -): creating table fresh\n");
+      $sql = "CREATE TABLE " . FMRESERVATIONS_TABLE . "(
         id int NOT NULL AUTO_INCREMENT,
         thedate date not NULL,
         seatcount int NOT NULL check (seatcount > 0),
         name text not NULL check (name <> ''),
+        email varchar(100) NOT NULL,
         PRIMARY KEY (id)
-    );";
-    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-    $result = dbDelta($sql);
-
-    //file_put_contents("php://stderr","*** FMReservations_Database::make_reservations_table: result (of $sql) is $result\n");
+      );";
+      require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+      $result = dbDelta($sql);
+      file_put_contents("php://stderr","*** FMReservations_Database::make_reservations_table: result (of $sql) is ".print_r($result,true)."\n");
+    } else if ($vers < 2.0) {
+      file_put_contents("php://stderr","*** -): Alterning table...\n");
+      $sql = "ALTER TABLE ".FMRESERVATIONS_TABLE. " ADD COLUMN email varchar(100) NOT NULL;";
+      $result = $wpdb->get_results($sql,'ARRAY_A'); 
+      file_put_contents("php://stderr","*** FMReservations_Database::make_reservations_table: result (of $sql) is ".print_r($result,true)."\n");
+    }
+    
   }
   public static function NextDate() {
     if (method_exists('FMSchedule_Database','Get_UpcomingShows')) {
@@ -76,16 +99,16 @@ class FMReservations_Database {
     ?><label for="FM_date">Date:</label>
     <select name="<?php echo $name;?>" id="FM_ate"><?php
        file_put_contents("php://stderr","*** :- method_exists('FMSchedule_Database','Get_UpcomingShows') returns |".method_exists('FMSchedule_Database','Get_UpcomingShows')."|\n");
-       if (method_exists('FMSchedule_Database','Get_UpcomingShows')) {
-         $shows = FMSchedule_Database::Get_UpcomingShows();
+       if (class_exists('FMSchedule_Database')) {
+         $shows = FMSchedule_Database::Get_ShowSchedule(FMSchedule_Database::ThisSeason(),'ARRAY_A');
          file_put_contents("php://stderr","*** -: shows = ".print_r($shows,true)."\n");
          //if ($thedate == '' && count($shows) > 0) {
          //  $thedate = $shows[0]['thedate'];
          //}
          for ($i = 0; $i < count($shows); $i++) {
            $date = $shows[$i]['thedate'];
-           $seatCount = FMReservations_Database::TotalReservedSeatsForDate($date);
-           if ($seatCount > 95) continue;
+           //$seatCount = FMReservations_Database::TotalReservedSeatsForDate($date);
+           //if ($seatCount > 95) continue;
            ?><option value="<?php echo $date; ?>" <?php
            if ($thedate == '') { $thedate = $date; } 
            if ($date == $thedate) { echo 'selected="selected"'; }
@@ -104,8 +127,8 @@ class FMReservations_Database {
       //}
       for ($i = 0; $i < count($shows); $i++) {
         $date = $shows[$i]['thedate'];
-        $seatCount = FMReservations_Database::TotalReservedSeatsForDate($date);
-        if ($seatCount > 95) continue;
+        //$seatCount = FMReservations_Database::TotalReservedSeatsForDate($date);
+        //if ($seatCount > 95) continue;
         $result .= '<option value="'.$date.'"';
         if ($thedate == '') { $thedate = $date; }
         if ($date == $thedate) { $result .=  ' selected="selected"'; }
@@ -146,29 +169,43 @@ class FMReservations_Database {
     $sql = $wpdb->prepare('SELECT * FROM '.FMRESERVATIONS_TABLE.' WHERE id = %d',$id);
     return $wpdb->get_row($sql, 'OBJECT');
   }
+  public static function CheckDupEmailForDate($thedate,$email) {
+    global $wpdb; 
+    $sql = $wpdb->prepare('SELECT COUNT(*) FROM '.FMRESERVATIONS_TABLE.' WHERE thedate = %s AND email = %s', $thedate,$email);
+    file_put_contents("php://stderr","*** FMReservations_Database::CheckDupEmailForDate(): sql = $sql\n");
+    $dups =  $wpdb->get_var($sql);
+    file_put_contents("php://stderr","*** -): dups = $dups\n");
+    return $dups == 0;
+  }
   public static function InsertNewReservation($item) {
     file_put_contents("php://stderr","*** FMReservations_Database::InsertNewReservation(): item is ".print_r($item,true)."\n");
     $thedate   = $item->thedate;
     $seatcount = $item->seatcount;
     $name      = $item->name;
+    $email     = $item->email;
     global $wpdb;
     $wpdb->insert(FMRESERVATIONS_TABLE,array("thedate" => $thedate,
                                              "seatcount" => $seatcount,
-                                             "name" => $name),
-                                             array("%s","%d","%s"));
+                                             "name" => $name,
+                                             "email" => $email),
+                                             array("%s", "%d", "%s", "%s"));
     file_put_contents("php://stderr","*** FMReservations_Database::InsertNewReservation(): inserted with id ".$wpdb->insert_id."\n");
     return $wpdb->insert_id;
   }
+  
   public static function UpdateReservation($item) {
     $thedate   = $item->thedate;
     $seatcount = $item->seatcount; 
     $name      = $item->name;
     $id        = $item->id;
+    $email     = $item->email;
     global $wpdb;
     $wpdb->update(FMRESERVATIONS_TABLE,array("seatcount" => $seatcount,
-                                             "name" => $name),
+                                             "name" => $name,
+                                             "email" => $email),
                                              array('id' => $item->id),
-                                             array('%d','%s'),'%d');
+                                             
+                                             array('%d','%s', '%s'),'%d');
   }
   public static function DeleteReservation($id) {
     global $wpdb;
